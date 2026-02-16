@@ -168,6 +168,15 @@ body {
     will-change: transform;
 }
 
+body.game-cooldown #app {
+    filter: brightness(0.7) saturate(0.85);
+}
+
+body.game-cooldown #app,
+body.game-cooldown #app * {
+    cursor: not-allowed !important;
+}
+
 body.visible-area--compact #app {
     padding: clamp(6px, 2vw, 12px);
 }
