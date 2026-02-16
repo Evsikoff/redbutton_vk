@@ -102,7 +102,9 @@ var preloadImage = function(e) {
                         t.image && t.image.url && preloadImage(t.image.url)
                     }), e.handleClick()
                 }) : t.stages && (this.stages = stages), !document.querySelector(t.wrapperSelector)) throw new Error("Game app wrapper not found by specified selector");
-            this.appWrapper = document.querySelector(t.wrapperSelector), this.createMarkup(), this.button.addEventListener("click", debounce(this.handleClick.bind(this), t.clickDelay, !0));
+            this.appWrapper = document.querySelector(t.wrapperSelector), this.createMarkup(), this.clickDelay = t.clickDelay || 0, this.cooldownTimer = null, this.button.addEventListener("click", debounce(function() {
+                e.startClickCooldown(), e.handleClick()
+            }, this.clickDelay, !0));
 
             // Обработчики изменения размера окна и iframe для адаптивности
             var self = this;
@@ -113,6 +115,14 @@ var preloadImage = function(e) {
             window.ResizeObserver && (this.resizeObserver = new ResizeObserver(this.handleFrameResize), this.resizeObserver.observe(document.documentElement))
         }
         return _createClass(i, [{
+            key: "startClickCooldown",
+            value: function() {
+                if (!this.clickDelay) return;
+                document.body.classList.add("game-cooldown"), this.cooldownTimer && clearTimeout(this.cooldownTimer), this.cooldownTimer = setTimeout(function() {
+                    document.body.classList.remove("game-cooldown")
+                }, this.clickDelay)
+            }
+        }, {
             key: "createMarkup",
             value: function() {
                 var e = this;
