@@ -5,8 +5,8 @@
 	<meta charset="utf-8">
     <meta name="viewport" content="user-scalable=no,width=device-width,initial-scale=1,maximum-scale=1" />
 	<link rel="stylesheet" href="css/main.css" />
-    <!-- Yandex Games SDK -->
-    <script src="https://yandex.ru/games/sdk/v2"></script>
+    <!-- VK Bridge -->
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 </head>
 <body oncontextmenu="return false;">
     <!-- Загрузочный экран -->
@@ -27,107 +27,83 @@
     </div>
 	<script src="js/main.js"></script>
 	<script>
-    let ysdk = null;
-    let player = null;
-
-    // Инициализация Yandex SDK
-    YaGames.init()
-        .then(sdk => {
-            ysdk = sdk;
-            console.log('Yandex SDK initialized');
-
-            // Получаем язык (по умолчанию русский)
-            const lang = ysdk.environment.i18n.lang || 'ru';
-            console.log('Language:', lang);
-
-            // Инициализируем игрока для облачных сохранений
-            return ysdk.getPlayer({ scopes: false });
+    // Инициализация VK Bridge
+    vkBridge.send('VKWebAppInit')
+        .then((data) => {
+            if (data.result) {
+                console.log('VK Bridge initialized');
+                // Показываем баннерную рекламу вверху экрана
+                vkBridge.send('VKWebAppShowBannerAd', { banner_location: 'top' })
+                    .then((data) => {
+                        if (data.result) console.log('Баннерная реклама отобразилась');
+                    })
+                    .catch((error) => {
+                        console.log('Ошибка показа баннера:', error);
+                    });
+            }
         })
-        .then(p => {
-            player = p;
-            console.log('Player initialized');
+        .catch((error) => {
+            console.error('Ошибка инициализации VK Bridge', error);
+        });
 
-            // Загружаем прогресс из облака или localStorage
-            return loadGameProgress();
-        })
+    // Загружаем прогресс и запускаем игру
+    loadGameProgress()
         .then(stage => {
-            // Показываем загрузочный экран минимум 2 секунды
             return new Promise(resolve => {
                 setTimeout(() => resolve(stage), 2000);
             });
         })
         .then(stage => {
-            // Скрываем загрузочный экран
             hideLoadingScreen();
 
-            // Предзагрузка изображений
             preloadImage('imgs/red-btn-p.png');
             preloadImage('imgs/green-btn.png');
             preloadImage('imgs/green-btn-p.png');
             preloadImage('imgs/blue-btn.png');
             preloadImage('imgs/blue-btn-p.png');
 
-            // Инициализация игры
-// Проверяем URL параметр restart
-const urlParams = new URLSearchParams(window.location.search);
-const restartStage = urlParams.get('restart');
+            const urlParams = new URLSearchParams(window.location.search);
+            const restartStage = urlParams.get('restart');
+            const pendingStage = window.localStorage.pendingStage;
+            let finalStage = stage;
 
-// Проверяем pendingStage (ожидаемый шаг после ручной перезагрузки)
-const pendingStage = window.localStorage.pendingStage;
-let finalStage = stage;
+            if (restartStage) {
+                finalStage = parseInt(restartStage);
+            } else if (pendingStage) {
+                finalStage = parseInt(pendingStage);
+                delete window.localStorage.pendingStage;
+                vkBridge.send('VKWebAppStorageSet', {
+                    key: 'gameState',
+                    value: JSON.stringify({ currentGameStage: finalStage })
+                }).catch(function(err) {
+                    console.log('Clear pending stage failed:', err);
+                });
+            }
 
-if (restartStage) {
-    finalStage = parseInt(restartStage);
-} else if (pendingStage) {
-    finalStage = parseInt(pendingStage);
-    // Очищаем pendingStage после использования
-    delete window.localStorage.pendingStage;
-    if (player) {
-        player.setData({ pendingStage: null }).catch(function(err) {
-            console.log('Clear pending stage failed:', err);
-        });
-    }
-}
+            var game = new Game({
+                clickDelay: 600,
+                wrapperSelector: '#app',
+                stagesUrl: 'js/stages.json',
+                initialStage: finalStage,
+            });
 
-// Инициализация игры
-var game = new Game({
-    clickDelay: 600,
-    wrapperSelector: '#app',
-    stagesUrl: 'js/stages.json',
-    initialStage: finalStage,
-    ysdk: ysdk,
-    player: player
-});
-
-// Если был параметр restart или pendingStage, сохраняем новый этап
-if (restartStage || pendingStage) {
-    localStorage.currentGameStage = finalStage;
-    if (player) {
-        player.setData({ currentGameStage: finalStage });
-    }
-    // Очищаем URL от параметра restart если он был
-    if (restartStage) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-    }
-}
+            if (restartStage || pendingStage) {
+                localStorage.currentGameStage = finalStage;
+                vkBridge.send('VKWebAppStorageSet', {
+                    key: 'gameState',
+                    value: JSON.stringify({ currentGameStage: finalStage })
+                }).catch(function(err) {
+                    console.log('Save failed:', err);
+                });
+                if (restartStage) {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }
 
             localStorage.bigGamePlayed = true;
-
-            // Сообщаем SDK, что игра загружена и готова
-            if (ysdk && ysdk.features && ysdk.features.LoadingAPI) {
-                ysdk.features.LoadingAPI.ready();
-                console.log('LoadingAPI.ready() called');
-            }
-
-            // Сообщаем SDK, что геймплей начался
-            if (ysdk && ysdk.features && ysdk.features.GameplayAPI) {
-                ysdk.features.GameplayAPI.start();
-                console.log('GameplayAPI.start() called');
-            }
         })
         .catch(err => {
-            console.error('SDK initialization error:', err);
-            // Если SDK не загрузился, запускаем игру без него
+            console.error('Initialization error:', err);
             hideLoadingScreen();
 
             preloadImage('imgs/red-btn-p.png');
@@ -144,39 +120,32 @@ if (restartStage || pendingStage) {
             localStorage.bigGamePlayed = true;
         });
 
-    // Функция загрузки прогресса (сначала облако, потом localStorage)
+    // Функция загрузки прогресса (сначала VK Storage, потом localStorage)
     async function loadGameProgress() {
-        let cloudStage = null;
-        let cloudPendingStage = null;
         let localStage = +window.localStorage.currentGameStage || 0;
 
-        // Пробуем загрузить из облачных сохранений Яндекса
-        if (player) {
-            try {
-                const data = await player.getData();
-                if (data && typeof data.currentGameStage !== 'undefined') {
-                    cloudStage = data.currentGameStage;
-                    console.log('Cloud save loaded, stage:', cloudStage);
+        try {
+            const data = await vkBridge.send('VKWebAppStorageGet', { keys: ['gameState'] });
+            if (data.keys) {
+                const stateStr = data.keys.find(k => k.key === 'gameState')?.value;
+                if (stateStr) {
+                    const progressObj = JSON.parse(stateStr);
+                    if (progressObj && typeof progressObj.currentGameStage !== 'undefined') {
+                        const cloudStage = progressObj.currentGameStage;
+                        console.log('VK Storage save loaded, stage:', cloudStage);
+                        if (progressObj.pendingStage !== undefined && progressObj.pendingStage !== null) {
+                            window.localStorage.pendingStage = progressObj.pendingStage;
+                            console.log('Pending stage loaded:', progressObj.pendingStage);
+                        }
+                        window.localStorage.currentGameStage = cloudStage;
+                        return cloudStage;
+                    }
                 }
-                if (data && typeof data.pendingStage !== 'undefined' && data.pendingStage !== null) {
-                    cloudPendingStage = data.pendingStage;
-                    // Синхронизируем с localStorage
-                    window.localStorage.pendingStage = cloudPendingStage;
-                    console.log('Cloud pending stage loaded:', cloudPendingStage);
-                }
-            } catch (err) {
-                console.log('Could not load cloud save:', err);
             }
+        } catch (err) {
+            console.log('Could not load VK Storage save:', err);
         }
 
-        // Если есть облачное сохранение - используем его
-        if (cloudStage !== null) {
-            // Также обновляем localStorage для синхронизации
-            window.localStorage.currentGameStage = cloudStage;
-            return cloudStage;
-        }
-
-        // Иначе используем localStorage
         console.log('Using localStorage, stage:', localStage);
         return localStage;
     }

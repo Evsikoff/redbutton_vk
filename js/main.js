@@ -88,10 +88,6 @@ var preloadImage = function(e) {
             var e = this;
             _classCallCheck(this, i), console.log(t), this.hideButton = t.hideButton, this.stage = 0, this.stages = [], this.defaultButtonImageUrl = "./images/red-button.png", this.waitingForReload = false;
 
-            // Сохраняем ссылки на Yandex SDK и игрока
-            this.ysdk = t.ysdk || null;
-            this.player = t.player || null;
-
             // Используем начальный этап из параметров или localStorage
             this.stage = t.initialStage !== undefined ? t.initialStage : (+window.localStorage.currentGameStage || 0);
 
@@ -148,16 +144,15 @@ var preloadImage = function(e) {
                 // Сохраняем в localStorage
                 window.localStorage.currentGameStage = this.stage;
 
-                // Сохраняем в облачные сохранения Яндекса
-                if (this.player) {
-                    this.player.setData({
-                        currentGameStage: this.stage
-                    }).then(function() {
-                        console.log('Cloud save successful, stage:', e.stage);
-                    }).catch(function(err) {
-                        console.log('Cloud save failed:', err);
-                    });
-                }
+                // Сохраняем в VK Storage
+                vkBridge.send('VKWebAppStorageSet', {
+                    key: 'gameState',
+                    value: JSON.stringify({ currentGameStage: this.stage })
+                }).then(function(data) {
+                    if (data.result) console.log('VK Storage save successful, stage:', e.stage);
+                }).catch(function(err) {
+                    console.log('VK Storage save failed:', err);
+                });
             }
         }, {
             key: "handleClick",
@@ -225,15 +220,14 @@ var preloadImage = function(e) {
                 if (t.waitForReload) {
                     // Сохраняем прогресс сразу на шаг из waitForReload
                     window.localStorage.currentGameStage = t.waitForReload;
-                    if (this.player) {
-                        this.player.setData({
-                            currentGameStage: t.waitForReload
-                        }).then(function() {
-                            console.log('Stage saved for reload:', t.waitForReload);
-                        }).catch(function(err) {
-                            console.log('Stage save failed:', err);
-                        });
-                    }
+                    vkBridge.send('VKWebAppStorageSet', {
+                        key: 'gameState',
+                        value: JSON.stringify({ currentGameStage: t.waitForReload })
+                    }).then(function(data) {
+                        if (data.result) console.log('Stage saved for reload:', t.waitForReload);
+                    }).catch(function(err) {
+                        console.log('Stage save failed:', err);
+                    });
                     this.waitingForReload = true;
                     this.button.classList.add("button--disabled");
                     this.button.style.pointerEvents = "none";
@@ -279,14 +273,13 @@ var preloadImage = function(e) {
                 window.localStorage.currentGameStage = 0;
                 this.stage = 0;
 
-                // Сбрасываем облачное сохранение
-                if (this.player) {
-                    this.player.setData({
-                        currentGameStage: 0
-                    }).catch(function(err) {
-                        console.log('Cloud save reset failed:', err);
-                    });
-                }
+                // Сбрасываем VK Storage
+                vkBridge.send('VKWebAppStorageSet', {
+                    key: 'gameState',
+                    value: JSON.stringify({ currentGameStage: 0 })
+                }).catch(function(err) {
+                    console.log('VK Storage reset failed:', err);
+                });
 
                 this.clearField();
                 this.handleClick();
